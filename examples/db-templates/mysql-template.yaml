@@ -1,11 +1,11 @@
 apiVersion: template.openshift.io/v1
 kind: Template
 metadata:
-  name: ejercicio-mysql-template
+  name: mysql-ephemeral-ejercicio
   annotations:
     description: >
-      Plantilla básica para desplegar MySQL sin almacenamiento persistente.
-      Completa los parámetros y objetos necesarios para que sea funcional.
+      Plantilla para desplegar una base de datos MySQL sin almacenamiento persistente.
+      Completa las secciones pendientes como parte del ejercicio.
     tags: database,mysql
 parameters:
   - name: MEMORY_LIMIT
@@ -15,28 +15,43 @@ parameters:
   - name: DATABASE_SERVICE_NAME
     displayName: Database Service Name
     description: Nombre del servicio de la base de datos.
-    value: mysql-ejemplo
+    value: mysql
   - name: MYSQL_USER
     displayName: MySQL User
     description: Usuario para conectarse a la base de datos.
-    required: true
+    value: user
   - name: MYSQL_PASSWORD
     displayName: MySQL Password
     description: Contraseña para el usuario MySQL.
-    required: true
+    value: password
   - name: MYSQL_DATABASE
     displayName: MySQL Database
     description: Nombre de la base de datos MySQL.
-    required: true
+    value: sampledb
 objects:
-  # Añade aquí los objetos necesarios: Secret, Service y DeploymentConfig
-  # Solo dejamos un borrador del Secret como ejemplo.
   - apiVersion: v1
     kind: Secret
     metadata:
       name: "${DATABASE_SERVICE_NAME}-secret"
     stringData:
-      mysql-user: "${MYSQL_USER}"
-      mysql-password: "${MYSQL_PASSWORD}"
-      mysql-database: "${MYSQL_DATABASE}"
-  # Aquí puedes añadir el resto de los objetos como Service, DeploymentConfig, etc.
+      database-user: "${MYSQL_USER}"
+      database-password: "${MYSQL_PASSWORD}"
+      database-name: "${MYSQL_DATABASE}"
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: "${DATABASE_SERVICE_NAME}"
+    spec:
+      ports:
+        - name: mysql
+          port: 3306
+          targetPort: 3306
+      selector:
+        name: "${DATABASE_SERVICE_NAME}"
+  - apiVersion: apps.openshift.io/v1
+    kind: DeploymentConfig
+    metadata:
+      name: "${DATABASE_SERVICE_NAME}"
+    spec:
+      # Completa aquí los detalles del DeploymentConfig
+      # Por ejemplo: contenedores, imagen, probes, etc.
