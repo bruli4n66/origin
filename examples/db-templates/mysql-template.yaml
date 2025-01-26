@@ -1,57 +1,161 @@
 apiVersion: template.openshift.io/v1
 kind: Template
 metadata:
-  name: mysql-ephemeral-ejercicio
+  name: ex288-php-mysql
+  labels:
+    template: php-app
   annotations:
+    openshift.io/display-name: PHP + MySQL (Persistent)
     description: >
-      Plantilla para desplegar una base de datos MySQL sin almacenamiento persistente.
-      Completa las secciones pendientes como parte del ejercicio.
-    tags: database,mysql
+      This template deploys a two-tier application with PHP and MySQL.
+    tags: php,mysql,quickstart
+    openshift.io/long-description: >
+      This template defines a LAMP stack application with PHP and MySQL,
+      including persistent storage for the database.
 parameters:
-  - name: MEMORY_LIMIT
-    displayName: Memory Limit
-    description: Cantidad máxima de memoria que puede usar el contenedor.
-    value: 512Mi
   - name: DATABASE_SERVICE_NAME
-    displayName: Database Service Name
-    description: Nombre del servicio de la base de datos.
+    description: The name of the database service.
     value: mysql
   - name: MYSQL_USER
-    displayName: MySQL User
-    description: Usuario para conectarse a la base de datos.
+    description: Username for MySQL.
     value: user
   - name: MYSQL_PASSWORD
-    displayName: MySQL Password
-    description: Contraseña para el usuario MySQL.
+    description: Password for MySQL.
     value: password
   - name: MYSQL_DATABASE
-    displayName: MySQL Database
-    description: Nombre de la base de datos MySQL.
+    description: Name of the MySQL database.
     value: sampledb
+  - name: MYSQL_ROOT_PASSWORD
+    description: Password for the MySQL root user.
+    value: rootpassword
+  - name: PHP_IMAGE_VERSION
+    description: Version of the PHP image to use.
+    value: "8.0"
+  - name: MYSQL_IMAGE_VERSION
+    description: Version of the MySQL image to use.
+    value: "8.0-el8"
 objects:
   - apiVersion: v1
     kind: Secret
     metadata:
       name: "${DATABASE_SERVICE_NAME}-secret"
+      labels:
+        template: php-app
     stringData:
       database-user: "${MYSQL_USER}"
       database-password: "${MYSQL_PASSWORD}"
       database-name: "${MYSQL_DATABASE}"
+      database-root-password: "${MYSQL_ROOT_PASSWORD}"
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: php-app
+      labels:
+        template: php-app
+    spec:
+      ports:
+        - port: 8080
+          targetPort: 8080
+      selector:
+        app: php-app
   - apiVersion: v1
     kind: Service
     metadata:
       name: "${DATABASE_SERVICE_NAME}"
+      labels:
+        template: php-app
     spec:
       ports:
-        - name: mysql
-          port: 3306
+        - port: 3306
           targetPort: 3306
       selector:
-        name: "${DATABASE_SERVICE_NAME}"
+        app: "${DATABASE_SERVICE_NAME}"
+  - apiVersion: apps.openshift.io/v1
+    kind: DeploymentConfig
+    metadata:
+      name: php-app
+      labels:
+        template: php-app
+    spec:
+      replicas: 1
+      selector:
+        app: php-app
+      strategy:
+        type: Rolling
+      template:
+        metadata:
+          labels:
+            app: php-app
+        spec:
+          containers:
+            - name: php
+              image: "php:${PHP_IMAGE_VERSION}"
+              ports:
+                - containerPort: 8080
+                  protocol: TCP
+              env:
+                - name: MYSQL_USER
+                  value: "${MYSQL_USER}"
+                - name: MYSQL_PASSWORD
+                  value: "${MYSQL_PASSWORD}"
+                - name: MYSQL_DATABASE
+                  value: "${MYSQL_DATABASE}"
+                - name: MYSQL_SERVICE_HOST
+                  value: "${DATABASE_SERVICE_NAME}"
+              readinessProbe:
+                httpGet:
+                  path: /
+                  port: 8080
+                initialDelaySeconds: 5
+                timeoutSeconds: 3
   - apiVersion: apps.openshift.io/v1
     kind: DeploymentConfig
     metadata:
       name: "${DATABASE_SERVICE_NAME}"
+      labels:
+        template: php-app
     spec:
-      # Completa aquí los detalles del DeploymentConfig
-      # Por ejemplo: contenedores, imagen, probes, etc.
+      replicas: 1
+      selector:
+        app: "${DATABASE_SERVICE_NAME}"
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          labels:
+            app: "${DATABASE_SERVICE_NAME}"
+        spec:
+          containers:
+            - name: mysql
+              image: "mysql:${MYSQL_IMAGE_VERSION}"
+              ports:
+                - containerPort: 3306
+                  protocol: TCP
+              env:
+                - name: MYSQL_USER
+                  value: "${MYSQL_USER}"
+                - name: MYSQL_PASSWORD
+                  value: "${MYSQL_PASSWORD}"
+                - name: MYSQL_DATABASE
+                  value: "${MYSQL_DATABASE}"
+                - name: MYSQL_ROOT_PASSWORD
+                  value: "${MYSQL_ROOT_PASSWORD}"
+              volumeMounts:
+                - name: mysql-data
+                  mountPath: /var/lib/mysql
+          volumes:
+            - name: mysql-data
+              persistentVolumeClaim:
+                claimName: mysql-data-claim
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: mysql-data-claim
+      labels:
+        template: php-app
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
