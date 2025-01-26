@@ -7,11 +7,8 @@ metadata:
   annotations:
     openshift.io/display-name: PHP + MySQL (Persistent)
     description: >
-      This template deploys a two-tier application with PHP and MySQL.
+      This template deploys a two-tier application with PHP and MySQL, pulling source code from a Git repository.
     tags: php,mysql,quickstart
-    openshift.io/long-description: >
-      This template defines a LAMP stack application with PHP and MySQL,
-      including persistent storage for the database.
 parameters:
   - name: DATABASE_SERVICE_NAME
     description: The name of the database service.
@@ -28,48 +25,55 @@ parameters:
   - name: MYSQL_ROOT_PASSWORD
     description: Password for the MySQL root user.
     value: rootpassword
-  - name: PHP_IMAGE_VERSION
-    description: Version of the PHP image to use.
+  - name: PHP_VERSION
+    description: Version of PHP to use.
     value: "8.0"
-  - name: MYSQL_IMAGE_VERSION
-    description: Version of the MySQL image to use.
+  - name: MYSQL_VERSION
+    description: Version of MySQL to use.
     value: "8.0-el8"
+  - name: SOURCE_REPOSITORY_URL
+    description: Git repository URL for the application source code.
+    value: "https://github.com/example/php-app"
+  - name: SOURCE_REPOSITORY_REF
+    description: Branch or tag in the Git repository.
+    value: "main"
+  - name: CONTEXT_DIR
+    description: Subdirectory for the application source code, if applicable.
+    value: ""
+  - name: NAMESPACE
+    description: The OpenShift namespace where the PHP ImageStream resides.
+    value: openshift
 objects:
-  - apiVersion: v1
-    kind: Secret
-    metadata:
-      name: "${DATABASE_SERVICE_NAME}-secret"
-      labels:
-        template: php-app
-    stringData:
-      database-user: "${MYSQL_USER}"
-      database-password: "${MYSQL_PASSWORD}"
-      database-name: "${MYSQL_DATABASE}"
-      database-root-password: "${MYSQL_ROOT_PASSWORD}"
-  - apiVersion: v1
-    kind: Service
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
     metadata:
       name: php-app
       labels:
         template: php-app
     spec:
-      ports:
-        - port: 8080
-          targetPort: 8080
-      selector:
-        app: php-app
-  - apiVersion: v1
-    kind: Service
+      source:
+        type: Git
+        git:
+          uri: "${SOURCE_REPOSITORY_URL}"
+          ref: "${SOURCE_REPOSITORY_REF}"
+        contextDir: "${CONTEXT_DIR}"
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: ImageStreamTag
+            namespace: "${NAMESPACE}"
+            name: php:${PHP_VERSION}
+      output:
+        to:
+          kind: ImageStreamTag
+          name: php-app:latest
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
     metadata:
-      name: "${DATABASE_SERVICE_NAME}"
+      name: php-app
       labels:
         template: php-app
-    spec:
-      ports:
-        - port: 3306
-          targetPort: 3306
-      selector:
-        app: "${DATABASE_SERVICE_NAME}"
   - apiVersion: apps.openshift.io/v1
     kind: DeploymentConfig
     metadata:
@@ -89,7 +93,7 @@ objects:
         spec:
           containers:
             - name: php
-              image: "php:${PHP_IMAGE_VERSION}"
+              image: php-app:latest
               ports:
                 - containerPort: 8080
                   protocol: TCP
@@ -127,7 +131,7 @@ objects:
         spec:
           containers:
             - name: mysql
-              image: "mysql:${MYSQL_IMAGE_VERSION}"
+              image: "mysql:${MYSQL_VERSION}"
               ports:
                 - containerPort: 3306
                   protocol: TCP
