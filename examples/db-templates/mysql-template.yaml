@@ -5,87 +5,63 @@ metadata:
   labels:
     template: php-app
   annotations:
-    openshift.io/display-name: PHP + MySQL (Persistent)
     description: >
-      This template deploys a two-tier application with PHP and MySQL, pulling source code from a Git repository.
+      This template deploys a PHP application with a MySQL database.
     tags: php,mysql,quickstart
 parameters:
-  - name: DATABASE_SERVICE_NAME
-    description: The name of the database service.
-    value: mysql
-  - name: MYSQL_USER
-    description: Username for MySQL.
-    value: user
-  - name: MYSQL_PASSWORD
-    description: Password for MySQL.
-    value: password
-  - name: MYSQL_DATABASE
-    description: Name of the MySQL database.
-    value: sampledb
-  - name: MYSQL_ROOT_PASSWORD
-    description: Password for the MySQL root user.
-    value: rootpassword
+  - name: APPLICATION_DOMAIN
+    description: >
+      The domain name of the application. Used to set the hostname for the route.
+    required: true
+  - name: HELLO_AUDIENCE
+    description: The audience to greet.
+    value: Engineers
   - name: PHP_VERSION
     description: Version of PHP to use.
     value: "8.0"
   - name: MYSQL_VERSION
     description: Version of MySQL to use.
-    value: "8.0-el8"
-  - name: SOURCE_REPOSITORY_URL
-    description: Git repository URL for the application source code.
-    value: "https://github.com/example/php-app"
-  - name: SOURCE_REPOSITORY_REF
-    description: Branch or tag in the Git repository.
-    value: "main"
-  - name: CONTEXT_DIR
-    description: Subdirectory for the application source code, if applicable.
-    value: ""
-  - name: NAMESPACE
-    description: The OpenShift namespace where the PHP ImageStream resides.
-    value: openshift
+    value: "8.0"
+  - name: GIT_REPOSITORY_URL
+    description: The Git repository URL for the application.
+    value: "http://git.test.example.com/work/php-app.git"
 objects:
-  - apiVersion: build.openshift.io/v1
-    kind: BuildConfig
+  - apiVersion: v1
+    kind: Service
     metadata:
       name: php-app
       labels:
-        template: php-app
+        app: php-app
     spec:
-      source:
-        type: Git
-        git:
-          uri: "${SOURCE_REPOSITORY_URL}"
-          ref: "${SOURCE_REPOSITORY_REF}"
-        contextDir: "${CONTEXT_DIR}"
-      strategy:
-        type: Source
-        sourceStrategy:
-          from:
-            kind: ImageStreamTag
-            namespace: "${NAMESPACE}"
-            name: php:${PHP_VERSION}
-      output:
-        to:
-          kind: ImageStreamTag
-          name: php-app:latest
-  - apiVersion: image.openshift.io/v1
-    kind: ImageStream
+      ports:
+        - port: 8080
+          targetPort: 8080
+      selector:
+        app: php-app
+  - apiVersion: v1
+    kind: Route
     metadata:
       name: php-app
       labels:
-        template: php-app
+        app: php-app
+    spec:
+      host: "${APPLICATION_DOMAIN}"
+      to:
+        kind: Service
+        name: php-app
+      port:
+        targetPort: 8080
   - apiVersion: apps.openshift.io/v1
     kind: DeploymentConfig
     metadata:
       name: php-app
       labels:
+        app: php-app
         template: php-app
     spec:
       replicas: 1
       selector:
         app: php-app
-      strategy:
-        type: Rolling
       template:
         metadata:
           labels:
@@ -93,19 +69,16 @@ objects:
         spec:
           containers:
             - name: php
-              image: php-app:latest
+              image: "php:${PHP_VERSION}"
               ports:
                 - containerPort: 8080
-                  protocol: TCP
               env:
-                - name: MYSQL_USER
-                  value: "${MYSQL_USER}"
-                - name: MYSQL_PASSWORD
-                  value: "${MYSQL_PASSWORD}"
-                - name: MYSQL_DATABASE
-                  value: "${MYSQL_DATABASE}"
+                - name: HELLO_AUDIENCE
+                  value: "${HELLO_AUDIENCE}"
                 - name: MYSQL_SERVICE_HOST
-                  value: "${DATABASE_SERVICE_NAME}"
+                  value: mysql
+                - name: GIT_REPOSITORY_URL
+                  value: "${GIT_REPOSITORY_URL}"
               readinessProbe:
                 httpGet:
                   path: /
@@ -115,51 +88,42 @@ objects:
   - apiVersion: apps.openshift.io/v1
     kind: DeploymentConfig
     metadata:
-      name: "${DATABASE_SERVICE_NAME}"
+      name: mysql
       labels:
+        app: mysql
         template: php-app
     spec:
       replicas: 1
       selector:
-        app: "${DATABASE_SERVICE_NAME}"
-      strategy:
-        type: Recreate
+        app: mysql
       template:
         metadata:
           labels:
-            app: "${DATABASE_SERVICE_NAME}"
+            app: mysql
         spec:
           containers:
             - name: mysql
               image: "mysql:${MYSQL_VERSION}"
               ports:
                 - containerPort: 3306
-                  protocol: TCP
               env:
                 - name: MYSQL_USER
-                  value: "${MYSQL_USER}"
+                  value: user
                 - name: MYSQL_PASSWORD
-                  value: "${MYSQL_PASSWORD}"
+                  value: password
                 - name: MYSQL_DATABASE
-                  value: "${MYSQL_DATABASE}"
+                  value: sampledb
                 - name: MYSQL_ROOT_PASSWORD
-                  value: "${MYSQL_ROOT_PASSWORD}"
-              volumeMounts:
-                - name: mysql-data
-                  mountPath: /var/lib/mysql
-          volumes:
-            - name: mysql-data
-              persistentVolumeClaim:
-                claimName: mysql-data-claim
+                  value: rootpassword
   - apiVersion: v1
-    kind: PersistentVolumeClaim
+    kind: Service
     metadata:
-      name: mysql-data-claim
+      name: mysql
       labels:
-        template: php-app
+        app: mysql
     spec:
-      accessModes:
-        - ReadWriteOnce
-      resources:
-        requests:
-          storage: 1Gi
+      ports:
+        - port: 3306
+          targetPort: 3306
+      selector:
+        app: mysql
